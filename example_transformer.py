@@ -219,6 +219,9 @@ def main():
     # 设置随机种子以保证可重复性
     torch.manual_seed(42)
     np.random.seed(42)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
     
     # 运行所有示例
     example_1_basic_usage()

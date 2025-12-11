@@ -14,7 +14,7 @@ class MultiHeadAttention(nn.Module):
     
     def __init__(self, d_model, num_heads):
         super(MultiHeadAttention, self).__init__()
-        assert d_model % num_heads == 0, "d_model必须能被num_heads整除"
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
         
         self.d_model = d_model
         self.num_heads = num_heads
@@ -96,7 +96,12 @@ class PositionalEncoding(nn.Module):
         div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
         
         pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
+        # Handle both even and odd d_model
+        if d_model % 2 == 0:
+            pe[:, 1::2] = torch.cos(position * div_term)
+        else:
+            # For odd d_model, cosine has one fewer position
+            pe[:, 1::2] = torch.cos(position * div_term[:d_model//2])
         
         pe = pe.unsqueeze(0)
         self.register_buffer('pe', pe)
@@ -200,10 +205,19 @@ class Transformer(nn.Module):
         """生成源序列和目标序列的mask"""
         src_mask = (src != 0).unsqueeze(1).unsqueeze(2)
         
-        tgt_mask = (tgt != 0).unsqueeze(1).unsqueeze(3)
+        # 为目标序列生成padding mask和causal mask
+        batch_size = tgt.size(0)
         seq_len = tgt.size(1)
-        nopeak_mask = (1 - torch.triu(torch.ones(1, seq_len, seq_len), diagonal=1)).bool()
-        tgt_mask = tgt_mask & nopeak_mask.to(tgt.device)
+        
+        # Padding mask: (batch_size, 1, seq_len, 1) for broadcasting
+        tgt_padding_mask = (tgt != 0).unsqueeze(1).unsqueeze(2)  # (batch_size, 1, 1, seq_len)
+        
+        # Causal mask: (1, 1, seq_len, seq_len)
+        nopeak_mask = (1 - torch.triu(torch.ones(1, 1, seq_len, seq_len), diagonal=1)).bool()
+        nopeak_mask = nopeak_mask.to(tgt.device)
+        
+        # Combine masks with proper broadcasting
+        tgt_mask = tgt_padding_mask & nopeak_mask
         
         return src_mask, tgt_mask
     
